@@ -11,7 +11,7 @@ object Main {
   import wiring._
 
   def main(args: Array[String]): Unit = {
-    wiring.svnRepo.initSvnRepo()
+    wiring.svnWCRepo.initSvnRepo()
     Await.result(httpService.lazyBinding, 5.seconds)
   }
 

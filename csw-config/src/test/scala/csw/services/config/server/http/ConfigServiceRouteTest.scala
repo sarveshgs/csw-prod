@@ -37,7 +37,7 @@ class ConfigServiceRouteTest
     testFileUtils.deleteServerFiles()
 
   override protected def beforeEach(): Unit =
-    svnRepo.initSvnRepo()
+    svnWCRepo.initSvnRepo()
 
   override protected def afterEach(): Unit =
     testFileUtils.deleteServerFiles()

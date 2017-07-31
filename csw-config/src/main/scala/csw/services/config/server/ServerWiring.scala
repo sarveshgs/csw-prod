@@ -19,7 +19,7 @@ class ServerWiring {
   lazy val svnWCRepo        = new SvnWCRepo(settings, actorRuntime.blockingIoDispatcher)
 
   lazy val oversizeFileService          = new OversizeFileService(settings, oversizeFileRepo)
-  lazy val configService: ConfigService = new SvnConfigService(settings, oversizeFileService, actorRuntime, svnRepo)
+  lazy val configService: ConfigService = new SvnConfigService(settings, oversizeFileService, actorRuntime, svnWCRepo)
 
   lazy val locationService: LocationService = LocationServiceFactory.make()
 
