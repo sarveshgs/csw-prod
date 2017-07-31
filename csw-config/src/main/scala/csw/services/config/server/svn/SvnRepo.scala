@@ -177,4 +177,5 @@ class SvnRepo(settings: Settings, blockingIoDispatcher: MessageDispatcher) exten
     svn
   }
 
+  override def update(): Unit = ???
 }

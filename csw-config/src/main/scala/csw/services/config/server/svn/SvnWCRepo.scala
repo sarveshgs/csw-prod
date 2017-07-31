@@ -7,17 +7,18 @@ import akka.dispatch.MessageDispatcher
 import csw.services.config.server.Settings
 import org.tmatesoft.svn.core._
 import org.tmatesoft.svn.core.internal.io.fs.FSRepositoryFactory
-import org.tmatesoft.svn.core.io.SVNRepositoryFactory
+import org.tmatesoft.svn.core.io.diff.SVNDeltaGenerator
+import org.tmatesoft.svn.core.io.{ISVNEditor, SVNRepository, SVNRepositoryFactory}
 import org.tmatesoft.svn.core.wc.{SVNClientManager, SVNRevision, SVNWCUtil}
+import org.tmatesoft.svn.core.wc2.{SvnOperationFactory, SvnTarget}
 
-import scala.collection.mutable
 import scala.concurrent.Future
-import scala.collection.mutable.MutableList
 
 class SvnWCRepo(settings: Settings, blockingIoDispatcher: MessageDispatcher) extends Repo(blockingIoDispatcher) {
   private implicit val _blockingIoDispatcher = blockingIoDispatcher
 
   val svnClientManager: SVNClientManager = SVNClientManager.newInstance()
+  val remoteRepo: SVNRepository = SVNRepositoryFactory.create(SVNURL.parseURIDecoded("file:///tmp/csw-config-svn"))
 
   def initSvnRepo(): Unit = try {
     // Create the new main repo
@@ -46,20 +47,18 @@ class SvnWCRepo(settings: Settings, blockingIoDispatcher: MessageDispatcher) ext
   }
 
   def addFile(path: Path, comment: String, data: InputStream): Future[SVNCommitInfo] = Future {
-    val svnClientManager: SVNClientManager = SVNClientManager.newInstance()
-    try {
-      val tmp = pathFromWC(path).getParent
-      if (tmp != null) { // null will be returned if the path has no parent
-        Files.createDirectories(tmp)
-      }
-      Files.copy(data, pathFromWC(path))
-      svnClientManager.getCommitClient.doImport(pathFromWC(path).toFile,
-        SVNURL.fromFile(Paths.get(settings.repositoryFile.getPath, path.toString).toFile), comment, null, false, false, SVNDepth.INFINITY)
-//      svnClientManager.getWCClient.doAdd(pathFromWC(path).toFile, false, false, true, SVNDepth.INFINITY, true, true)
-//      svnClientManager.getCommitClient.doCommit(Array(pathFromWC(path).toFile), false, comment, null, null, false, false, SVNDepth.INFINITY)
-    } finally {
-      svnClientManager.dispose()
-    }
+
+    val editor: ISVNEditor = remoteRepo.getCommitEditor("Log message", null, true, null)
+    editor.openRoot(-1)
+    editor.addFile(path.toString, null, -1)
+
+    var deltaGenerator: SVNDeltaGenerator = new SVNDeltaGenerator()
+    editor.applyTextDelta(path.toString, null)
+    val checksum = deltaGenerator.sendDelta(path.toString, data, editor, true)
+    editor.closeFile(path.toString, checksum)
+    editor.closeDir()
+    editor.closeEdit()
+
   }
 
   def modifyFile(path: Path, comment: String, data: InputStream): Future[SVNCommitInfo] = Future {
@@ -83,18 +82,21 @@ class SvnWCRepo(settings: Settings, blockingIoDispatcher: MessageDispatcher) ext
   }
 
   def list(): Future[List[SVNDirEntry]] = Future {
-    val svnClientManager: SVNClientManager = SVNClientManager.newInstance()
+    var entries = List[SVNDirEntry]()
+    val svnOperationFactory = new SvnOperationFactory()
     try {
-      var svnDirEntries: mutable.MutableList[SVNDirEntry] = null
-      svnClientManager.getLogClient.doList(settings.svnUrl, SVNRevision.BASE, SVNRevision.HEAD, false, true,
-        new ISVNDirEntryHandler {
-          override def handleDirEntry(dirEntry: SVNDirEntry): Unit = svnDirEntries += dirEntry
-        })
-
-      svnDirEntries.toList
+      val svnList = svnOperationFactory.createList()
+      svnList.setSingleTarget(SvnTarget.fromURL(settings.svnUrl, SVNRevision.HEAD))
+      svnList.setRevision(SVNRevision.HEAD)
+      svnList.setDepth(SVNDepth.INFINITY)
+      svnList.setReceiver((_, e: SVNDirEntry) => entries = e :: entries)
+      svnList.run()
     } finally {
-      svnClientManager.dispose()
+      svnOperationFactory.dispose()
     }
+    entries
+      .filter(_.getKind == SVNNodeKind.FILE)
+      .sortWith(_.getRelativePath < _.getRelativePath)
   }
 
   def pathExists(path: Path, id: Option[Long]): Future[Boolean] = Future {
@@ -111,6 +113,14 @@ class SvnWCRepo(settings: Settings, blockingIoDispatcher: MessageDispatcher) ext
     } finally {
       svnClientManager.dispose()
     }
+  }
+
+  def update(): Unit = {
+
+    svnClientManager.getUpdateClient.doUpdate(
+      Array(Paths.get("/tmp/wc").toFile),
+      SVNRevision.HEAD,
+      SVNDepth.INFINITY, true, true)
   }
 
   def hist(path: Path, maxResults: Int): Future[List[SVNLogEntry]] = Future {

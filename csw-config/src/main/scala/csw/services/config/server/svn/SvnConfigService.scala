@@ -85,6 +85,7 @@ class SvnConfigService(settings: Settings, fileService: OversizeFileService, act
       }
     }
 
+    svnRepo.update()
     // If the file exists in the repo, get its data
     async {
       await(pathStatus(path, id)) match {

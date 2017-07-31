@@ -1,11 +1,10 @@
 package csw.services.config.api.models
 
-import java.io.{File, InputStream}
-import java.nio.file.Path
+import java.io.InputStream
 import java.util.concurrent.CompletableFuture
 
-import akka.stream.scaladsl.{FileIO, Source, StreamConverters}
-import akka.stream.{javadsl, Materializer}
+import akka.stream.scaladsl.{Source, StreamConverters}
+import akka.stream.{Materializer, javadsl}
 import akka.util.ByteString
 
 import scala.compat.java8.FutureConverters._
